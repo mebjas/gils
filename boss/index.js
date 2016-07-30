@@ -5,21 +5,57 @@ var fs = require('fs');
 var github = require('octonode');
 var fork = require('child_process').fork;
 var portfinder = require('portfinder');
+var freeport = require('freeport');
 var sprintf = require('sprintf').sprintf;
-var metadata = require('./metadata');
+var queue = require('../libs/queue');
+var metadata = require('./metadata.json');
 
 var app = express();
-app.use( bodyParser.json() );       // to support JSON-encoded bodies
-app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
+app.use( bodyParser.json() );        // to support JSON-encoded bodies
+app.use(bodyParser.urlencoded({      // to support URL-encoded bodies
   extended: true
-})); 
+}));
+metadata.perPage = 100;
 
 var tokenstore = 'http://localhost:3000/';
 var selfaddr = 'http://localhost:3001/';
 var dataset = '../dataset/data.csv';
 var tokens = [];
-var client = null;     // GITHUB CLIENT
+var client = null;                  // GITHUB CLIENT
 var metadatFile = './metadata.js';
+var rq = new queue(10);             // repo queue
+var freeWorkers = new queue();      // free worker queue
+var workerYellowPage = {};          // yellow pages for workers
+
+// ------------------ global functions -----------------------
+function getOrgsAndDist(client) {
+    var organisations = client.get('/organizations', metadata.since, metadata.perPage, true, function(err, status, data) {
+        if (err) {
+            console.log("GITHUB API ERROR, ", err);
+            return;
+        }
+        
+        if (rq.cb == undefined) {
+            rq.setThreshold(getOrgsAndDist);
+        }
+        data.forEach(function(org) {
+            rq.push(org);
+            console.log(sprintf("%s pushed to queue", org.login));
+        });
+
+        while (freeWorkers.length()) {
+            var freeWorker = freeWorkers.pop();
+            console.log("Giving work to ", freeWorker);
+            request.post(workerYellowPage[freeWorker] +'work', {form: {org: rq.pop()}}, function(err, httpResponse, body) {
+                if (err) {
+                    console.log("[error] worker threw error when getting work", err);
+                    return;
+                }
+                console.log(sprintf("Free %s given work", freeWorker));
+            })
+        }
+    });
+}
 
 /**
  * DATA Api for logging from workers.
@@ -31,20 +67,19 @@ app.post('/data', function (req, res) {
         return;
     }
 
-    var data = JSON.parse(req.body.data);
-    var log = data.issue;
-    if (data.labels.length) {
+    var data = req.body.data;
+    var log = {issue: data.title, body: data.body,labels: []};
+    // console.log(data);
+    if (typeof data.labels != 'undefined' && data.labels.length) {
         var labels = [];
         data.labels.forEach(function (label) {
             labels.push(label);
             // TODO: verify this param
         });
-        log = [data.issue, labels.join(',')].join(',') +"\r\n";
-    } else {
-        log += "\r\n";
+        log.labels = labels;
     }
 
-    fs.appendFile(dataset, log, function (err) {
+    fs.appendFile(dataset, JSON.stringify(log) +"\r\n", function (err) {
         if (err) {
             console.log('[error] ERROR While appending to dataset', err);
         }
@@ -58,14 +93,20 @@ app.post('/data', function (req, res) {
 app.post('/register', function (req, res) {
     // TODO: validate the data
     var token = req.body.token;
+    var ID = req.body.id;
 
     // Find a free port
-    portfinder.getPort(function (err, port) {
+    freeport(function (err, port) {
         // register it with token store
         request.post(tokenstore +'registerWorker', {form: {token: token, port: port}}, function (err, httpResponse, body) {
             if (err) {
                 return console.error('worker registeration failed:', err);
             }
+
+            // feed it to yellow pages
+            workerYellowPage['worker' +ID] = sprintf("http://localhost:%s/", port);
+            freeWorkers.push('worker' +ID);
+            console.log(sprintf("Added to yellow pages: worker%s => %s", ID, workerYellowPage['worker' +ID]));
 
             // TODO: validate if tokenstore sent error = false
             var response = JSON.parse(httpResponse.body);
@@ -75,10 +116,41 @@ app.post('/register', function (req, res) {
 
             // send it downstream
             res.json({port: port});
+
+            if (rq.length()) {
+                while (freeWorkers.length()) {
+                    var freeWorker = freeWorkers.pop();
+                    console.log("Giving work to ", freeWorker);
+                    request.post(workerYellowPage[freeWorker] +'work', {form: {org: rq.pop()}}, function(err, httpResponse, body) {
+                        if (err) {
+                            console.log("[error] worker threw error when getting work", err);
+                            return;
+                        }
+                        console.log(sprintf("Free %s given work", freeWorker));
+                    })
+                }
+            }
         })
     });
 
 })
+
+app.post('/next', function(req, res) {
+    var since = req.body.org;
+    var workerID = req.body.id;
+    if (parseInt(metadata.since) < parseInt(since)) {
+        fs.writeFileSync(metadatFile, JSON.stringify({since: since}));
+        metadata.since = since;
+    }
+
+    request.post(workerYellowPage['worker' +workerID] +'work', {form: {org: rq.pop()}}, function(err, httpResponse, body) {
+        if (err) {
+            console.log("[error] worker threw error when getting work", err);
+            return;
+        }
+        console.log(sprintf("Free worker%s given work", workerID));
+    })
+});
 
 app.listen('3001', function (req, res) {
     console.log('Boss started at 3001. \nRegistering self as BOSS!');
@@ -99,26 +171,27 @@ app.listen('3001', function (req, res) {
 
             if (tokens.length) {
                 // note 0th index always by the BOSS
+                // TODO: however, it should be used by other workers too to some extent.
+                // like if api calls/hr left is more than some threshold lend it to 
+                // workers - like a good boss.
                 client = github.client(tokens[0].token);
                 console.log(sprintf("BOSS Took the first token for itself"));
-
-                var organisations = client.get('/organizations', metadata.since, metadata.perPage, true, function(err, body, header) {
-                     if (err) {
-                        console.log("GITHUB API ERROR, ", err);
-                        return;
-                    }
-                    
-                    //fs.writeFileSync(metadatFile, JSON.stringify({since: since}));
-                    // console.log(header);
-                });
+                getOrgsAndDist(client);
+                
             }
 
             // Now spawn workers corresponding to this tokens
-            tokens.forEach(function(token, index) {
-                if (!index) return;
+            // with 5s timeout that each process get a unique port
+            function spawnChild(i) {
+                if (!i || i >= tokens.length) return;
                 console.log('spawning a worker');
-                var child = fork('../workers/index.js', [token.token, selfaddr, index]);
-            });
+                var token = tokens[i];
+                var child = fork('../workers/index.js', [token.token, selfaddr, i]);
+                setTimeout(function() {
+                    spawnChild(i + 1);
+                }, 5000);
+            }
+            spawnChild(1);
         });
     });
 });

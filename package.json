@@ -6,6 +6,7 @@
   "dependencies": {
     "body-parser": "^1.15.2",
     "express": "^4.14.0",
+    "freeport": "^1.0.5",
     "octonode": "^0.7.6",
     "portfinder": "^1.0.5",
     "request": "^2.74.0",
