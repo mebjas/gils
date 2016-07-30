@@ -1,0 +1,30 @@
+{
+  "name": "gils",
+  "version": "1.0.0",
+  "description": "github issue to label spider",
+  "main": "index.js",
+  "dependencies": {
+    "body-parser": "^1.15.2",
+    "express": "^4.14.0",
+    "request": "^2.74.0",
+    "sprintf": "^0.1.5"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mebjas/gils.git"
+  },
+  "keywords": [
+    "spider",
+    "github"
+  ],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/mebjas/gils/issues"
+  },
+  "homepage": "https://github.com/mebjas/gils#readme"
+}
