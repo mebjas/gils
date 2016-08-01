@@ -1,4 +1,18 @@
 # gils
-Github Issue -> labels spider: Spider bot to scrape issue to labels dataset from Github. This will help build a auto labeling model.
+Github (Issue title, issue text, labels) spider: Spider bot to scrape issue to labels dataset from Github. This dataset will help build a auto labeling model.
 
-AIM: spider auto scales by adding new access tokens to system. This is done by adding a new token to `token-store` service
+AIM: spider auto scales by adding new access tokens to system. This is done by adding a new token to `token-store` service.
+
+### How to run
+```sh
+# token-store service for service discovery
+node token-store/index.js
+```
+
+```sh
+# boss service for task allocation and spawning workers
+node boss/index.js
+```
+
+### API Flow diagram
+![gils API flow](http://blog.minhazav.xyz/wp-content/uploads/2016/08/gils-flow.png)
