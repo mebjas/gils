@@ -1,3 +1,4 @@
+// boss service
 var express = require('express');
 var request = require('request');
 var bodyParser = require('body-parser');
@@ -22,27 +23,36 @@ var selfaddr = 'http://localhost:3001/';
 var dataset = '../dataset/data.csv';
 var tokens = [];
 var client = null;                  // GITHUB CLIENT
-var metadatFile = './metadata.js';
+var orgThreshold = 20;              // Get more organizations info, if org in queue
+                                    // is less than this.
+var metadatFile = './metadata.json';
 var rq = new queue(10);             // repo queue
 var freeWorkers = new queue();      // free worker queue
 var workerYellowPage = {};          // yellow pages for workers
 
 // ------------------ global functions -----------------------
-function getOrgsAndDist(client) {
+/**
+ * function to get organizations using github api and populate the queue
+ */
+function getOrganizations(client, cb) {
+    // TODO: add check for api call limit @priority: high
     var organisations = client.get('/organizations', metadata.since, metadata.perPage, true, function(err, status, data) {
         if (err) {
             console.log("GITHUB API ERROR, ", err);
             return;
         }
         
-        if (rq.cb == undefined) {
-            rq.setThreshold(getOrgsAndDist);
-        }
         data.forEach(function(org) {
             rq.push(org);
             console.log(sprintf("%s pushed to queue", org.login));
         });
 
+       if (cb != undefined) cb();
+    });
+}
+
+function getOrgsAndDist(client) {
+    getOrganizations(client, function () {
         while (freeWorkers.length()) {
             var freeWorker = freeWorkers.pop();
             console.log("Giving work to ", freeWorker);
@@ -56,6 +66,9 @@ function getOrgsAndDist(client) {
         }
     });
 }
+
+// ------------------ global functions till here -----------------------
+
 
 /**
  * DATA Api for logging from workers.
@@ -135,12 +148,23 @@ app.post('/register', function (req, res) {
 
 })
 
+/**
+ * Api for workers to ask for next work
+ */
 app.post('/next', function(req, res) {
     var since = req.body.org;
     var workerID = req.body.id;
     if (parseInt(metadata.since) < parseInt(since)) {
         fs.writeFileSync(metadatFile, JSON.stringify({since: since}));
         metadata.since = since;
+    }
+
+    if (rq.length() < orgThreshold) getOrgsAndDist(client);
+
+    if (rq.length() < 1) {
+        freeWorkers.push('worker' +workerID);
+        console.log(sprintf("WORKER%s added to freepool, as rq is empty.", workerID));
+        return;
     }
 
     request.post(workerYellowPage['worker' +workerID] +'work', {form: {org: rq.pop()}}, function(err, httpResponse, body) {
@@ -152,6 +176,19 @@ app.post('/next', function(req, res) {
     })
 });
 
+/**
+ * Api to push a org back to queue
+ */
+app.post('/pushback', function (req, res) {
+    // TODO: validate this req param
+    var org = req.body.org;
+    rq.push(org);
+    res.json({error: false, message: 'org pushed back to queue'});
+})
+
+/**
+ * 
+ */
 app.listen('3001', function (req, res) {
     console.log('Boss started at 3001. \nRegistering self as BOSS!');
     // register itself as boss

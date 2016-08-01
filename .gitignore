@@ -1,2 +1,4 @@
 node_modules/
 token-pool/tokens.js
+boss/metadata.json
+dataset/data.csv
