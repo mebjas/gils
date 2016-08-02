@@ -51,8 +51,8 @@ function getOrganizations(client, cb) {
     });
 }
 
-function getOrgsAndDist(client) {
-    getOrganizations(client, function () {
+function getOrgsAndDist(client, useCB) {
+    var cb = function () {
         while (freeWorkers.length()) {
             var freeWorker = freeWorkers.pop();
             console.log("Giving work to ", freeWorker);
@@ -64,7 +64,11 @@ function getOrgsAndDist(client) {
                 console.log(sprintf("Free %s given work", freeWorker));
             })
         }
-    });
+    };
+    if (useCB === false) {
+        cb = undefined;
+    }
+    getOrganizations(client, cb);
 }
 
 // ------------------ global functions till here -----------------------
@@ -159,9 +163,10 @@ app.post('/next', function(req, res) {
         metadata.since = since;
     }
 
-    if (rq.length() < orgThreshold) getOrgsAndDist(client);
+    if (rq.length() < orgThreshold) getOrgsAndDist(client, false);
 
     if (rq.length() < 1) {
+        debugger;
         freeWorkers.push('worker' +workerID);
         console.log(sprintf("WORKER%s added to freepool, as rq is empty.", workerID));
         return;
@@ -199,6 +204,7 @@ app.listen('3001', function (req, res) {
         console.log('register boss successfull');
 
         // Get all tokens
+        // TODO: this could be a response to registerboss api itself
         request.get(tokenstore +'get', function (err, httpResponse, body) {
             if (err) {
                 return console.error('get tokens failed:', err);

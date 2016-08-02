@@ -56,6 +56,7 @@ request.post(bossAddr +'register', {form: {token: token, id: ID}}, function (err
     app.post('/work', function(req, res) {
         var org = req.body.org;
         if (org == null) {
+            // TODO: create a request to add self to free pool
             console.log("queue over worker exits");
             process.exit(0);
         }
@@ -92,8 +93,15 @@ request.post(bossAddr +'register', {form: {token: token, id: ID}}, function (err
                 // TODO: add check for api call limit @priority: high
                 ghrepo.issues(function (err, _data, headers) {
                     if (err) {
-                        console.log("[error] issue fetch error by worker", err, token, fullName);            
-                    }          
+                        // TODO: rather than blocking everything out, it should log this to logs
+                        // and continue operation.
+                        console.log("[error] issue fetch error by worker", err, token, fullName);
+                        return;          
+                    }
+                    if (!_data.length) {
+                        lastOrgId = org.id;
+                        return next();;
+                    }   
                     _data.forEach(function (issue) {
                         try {
                             request.post(bossAddr +'data', {form: {data: issue}});
@@ -106,10 +114,10 @@ request.post(bossAddr +'register', {form: {token: token, id: ID}}, function (err
                             });
                         }
                     });
+                    lastOrgId = org.id;
+                    next();
                 });
             }, this);
-            lastOrgId = org.id;
-            next();
         })
     });
 });
