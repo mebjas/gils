@@ -52,58 +52,62 @@ request.post(bossAddr +'register', {form: {token: token, id: ID}}, function (err
     app.listen(port, function (req, res) {
         console.log('worker listening to port, ', port);
     });
+});
 
-    app.post('/work', function(req, res) {
-        // TODO: validate these parameters
-        var org = req.body.org;
-        if (org == null) {
-            // TODO: create a request to add self to free pool @priority:high
-            console.log("queue over worker exits");
-            process.exit(0);
+app.post('/work', function(req, res) {
+    res.json({error: false});
+    // TODO: validate these parameters
+    var org = req.body.org;
+    if (org == null) {
+        // TODO: create a request to add self to free pool @priority:high
+        console.log("queue over worker exits");
+        process.exit(0);
+    }
+    console.log(sprintf("WORKER%s dealing with org: %s", ID, org.login));
+
+    var ghorg = client.org(org.login);
+    ghorg.repos(function(err,data, headers) {
+        if (err) {
+            if (typeof err.message != 'undefined'
+                && err.message.indexOf('API rate limit exceeded') === 0) {
+                    // Case API Limit exceeded.
+                    // Get the reset period and set a timeout to ask for next
+                    // at that time.
+                    if (typeof err.headers == 'undefined') {
+                        console.log(sprintf("[error] [high] worker%s [APILIMIT] err.headers undefined", ID));
+                        process.exit(0);
+                    }
+
+                    var resetTime = parseInt(err.headers['x-ratelimit-reset']);
+                    console.log(sprintf("WORKER%s will hibernate till %s", ID, resetTime));
+
+                    // hibernate till API LIMIT reset period + 1;
+                    // Ask boss to push this org back to queue
+                    request.post(bossAddr +'pushback', {form: {org: org}});
+                    setTimeout(next, (resetTime - Math.round(new Date().getTime() / 1000))*1000 + 1000);
+                    return;
+                }
+            console.log("[error] repo fetch error by worker", err, token, org.login);
         }
-        console.log(sprintf("WORKER%s dealing with org: %s", ID, org.login));
-        res.json({error: false});
 
-        var ghorg = client.org(org.login);
-        ghorg.repos(function(err,data, headers) {
-            if (err) {
-                if (typeof err.message != 'undefined'
-                    && err.message.indexOf('API rate limit exceeded') === 0) {
-                        // Case API Limit exceeded.
-                        // Get the reset period and set a timeout to ask for next
-                        // at that time.
-                        if (typeof err.headers == 'undefined') {
-                            console.log(sprintf("[error] [high] worker%s [APILIMIT] err.headers undefined", ID));
-                            process.exit(0);
-                        }
+        var repoCount = data.length, covered = 0;
+        if (!repoCount) {
+            lastOrgId = org.id;
+            return next();
+        }
 
-                        var resetTime = parseInt(err.headers['x-ratelimit-reset']);
-                        console.log(sprintf("WORKER%s will hibernate till %s", ID, resetTime));
+        lastOrgId = org.id;
 
-                        // hibernate till API LIMIT reset period + 1;
-                        // Ask boss to push this org back to queue
-                        request.post(bossAddr +'pushback', {form: {org: org}});
-                        setTimeout(next, (resetTime - Math.round(new Date().getTime() / 1000))*1000 + 1000);
-                        return;
-                    }
-                console.log("[error] repo fetch error by worker", err, token, org.login);
-            }
-            data.forEach(function(repo) {
-                var fullName = repo.full_name;
-                var ghrepo = client.repo(fullName);
-                // TODO: add check for api call limit @priority: high
-                ghrepo.issues(function (err, _data, headers) {
-                    if (err) {
-                        // TODO: rather than blocking everything out, it should log this to logs
-                        // and continue operation.
-                        console.log("[error] issue fetch error by worker", err, token, fullName);
-                        lastOrgId = org.id;
-                        return;          
-                    }
-                    if (!_data.length) {
-                        lastOrgId = org.id;
-                        return next();;
-                    }   
+        data.forEach(function(repo) {
+            var fullName = repo.full_name;
+            var ghrepo = client.repo(fullName);
+            // TODO: add check for api call limit @priority: high
+            ghrepo.issues(function (err, _data, headers) {
+                if (err) {
+                    // TODO: rather than blocking everything out, it should log this to logs
+                    // and continue operation.
+                    console.log("[error] issue fetch error by worker", err, token, fullName);
+                } else if (_data.length) {
                     _data.forEach(function (issue) {
                         try {
                             request.post(bossAddr +'data', {form: {data: issue}});
@@ -116,12 +120,14 @@ request.post(bossAddr +'register', {form: {token: token, id: ID}}, function (err
                             });
                         }
                     });
-                    lastOrgId = org.id;
+                }   
+
+                if (++covered == repoCount) {
                     next();
-                });
-            }, this);
-        })
-    });
+                }
+            });
+        }, this);
+    })
 });
 
 
