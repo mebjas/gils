@@ -1,10 +1,12 @@
-// token-store service
+/**
+ * token-store service
+ * deals with incoming tokens and serves as service discovery service.
+ */
 var express = require('express');
 var bodyParser = require('body-parser');
 var sprintf = require('sprintf').sprintf;
 var request = require('request');
 var tokens = require('./tokens');
-
 
 var app = express();
 app.use( bodyParser.json() );       // to support JSON-encoded bodies
@@ -12,6 +14,7 @@ app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
   extended: true
 })); 
 
+// TODO: change this to a static class @end
 // DS to store all discovery information
 /* REGION: Discovery class */{
     var discovery = function() {
@@ -48,6 +51,7 @@ app.get('/get', function(req, res) {
  * Request to add a new token
  */
 app.post('/new', function(req, res) {
+    // TODO: put validation on this token.
     var t = req.body.token;
     var l = req.body.login;
     console.log(sprintf("new token request with token: %s, login: %s", t, l));
@@ -60,6 +64,9 @@ app.post('/new', function(req, res) {
         next: 0
     };
 
+    // save new token in memory
+    // TODO: Save this to token.js as well ?
+    // make it configurable by req param.
     tokens.push(token);
     // send the message downstream
 
@@ -92,7 +99,7 @@ app.post('/registerBoss', function(req, res) {
 app.post('/registerWorker', function(req, res) {
     // TODO: validate the params
     var worker = {
-        host: "http://localhost", // TODO: remove this localhost hardcoding
+        host: "http://localhost", // TODO: remove this localhost & protocol hardcoding
         port: req.body.port,
         getAddr: function() {
             return this.host +':' +this.port +'/';
@@ -106,5 +113,5 @@ app.post('/registerWorker', function(req, res) {
 
 
 app.listen('3000', function (req, res) {
-    console.log("App started at port 3000");
+    console.log("TOKEN-POOL Service started at port 3000");
 });

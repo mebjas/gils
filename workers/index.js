@@ -54,9 +54,10 @@ request.post(bossAddr +'register', {form: {token: token, id: ID}}, function (err
     });
 
     app.post('/work', function(req, res) {
+        // TODO: validate these parameters
         var org = req.body.org;
         if (org == null) {
-            // TODO: create a request to add self to free pool
+            // TODO: create a request to add self to free pool @priority:high
             console.log("queue over worker exits");
             process.exit(0);
         }
@@ -96,6 +97,7 @@ request.post(bossAddr +'register', {form: {token: token, id: ID}}, function (err
                         // TODO: rather than blocking everything out, it should log this to logs
                         // and continue operation.
                         console.log("[error] issue fetch error by worker", err, token, fullName);
+                        lastOrgId = org.id;
                         return;          
                     }
                     if (!_data.length) {
