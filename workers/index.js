@@ -79,7 +79,8 @@ app.post('/work', function(req, res) {
                     }
 
                     var resetTime = parseInt(err.headers['x-ratelimit-reset']);
-                    console.log(sprintf("WORKER%s will hibernate till %s", ID, resetTime));
+                    console.log(sprintf("WORKER%s will hibernate till", ID));
+                    console.log(new Date(resetTime * 1000));
 
                     // hibernate till API LIMIT reset period + 1;
                     // Ask boss to push this org back to queue
@@ -87,7 +88,8 @@ app.post('/work', function(req, res) {
                     setTimeout(next, (resetTime - Math.round(new Date().getTime() / 1000))*1000 + 1000);
                     return;
                 }
-            console.log("[error] repo fetch error by worker", err, token, org.login);
+            
+            console.log('some other error', err);
         }
 
         var repoCount = data.length, covered = 0;
@@ -104,9 +106,28 @@ app.post('/work', function(req, res) {
             // TODO: add check for api call limit @priority: high
             ghrepo.issues(function (err, _data, headers) {
                 if (err) {
-                    // TODO: rather than blocking everything out, it should log this to logs
-                    // and continue operation.
-                    console.log("[error] issue fetch error by worker", err, token, fullName);
+                    if (typeof err.message != 'undefined'
+                        && err.message.indexOf('API rate limit exceeded') === 0) {
+                            // Case API Limit exceeded.
+                            // Get the reset period and set a timeout to ask for next
+                            // at that time.
+                            if (typeof err.headers == 'undefined') {
+                                console.log(sprintf("[error] [high] worker%s [APILIMIT] err.headers undefined", ID));
+                                process.exit(0);
+                            }
+
+                            var resetTime = parseInt(err.headers['x-ratelimit-reset']);
+                            console.log(sprintf("WORKER%s will hibernate till", ID));
+                            console.log(new Date(resetTime * 1000));
+
+                            // hibernate till API LIMIT reset period + 1;
+                            // Ask boss to push this org back to queue
+                            // this will result in loss of some information here but that's fine
+                            setTimeout(next, (resetTime - Math.round(new Date().getTime() / 1000))*1000 + 1000);
+                            return;
+                        }
+                    
+                    console.log('some other error', err);
                 } else if (_data.length) {
                     _data.forEach(function (issue) {
                         try {

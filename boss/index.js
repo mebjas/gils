@@ -203,6 +203,7 @@ app.post('/pushback', function (req, res) {
     // TODO: validate this req param
     var org = req.body.org;
     rq.push(org);
+    console.log(sprintf("ORG: %s pushedback to queue", org.login));
     res.json({error: false, message: 'org pushed back to queue'});
 })
 
