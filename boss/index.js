@@ -16,6 +16,7 @@ var freeport = require('freeport');
 var sprintf = require('sprintf').sprintf;
 var queue = require('../libs/queue');
 var metadata = require('./metadata.json');
+var workerCount = 0;
 
 var app = express();
 app.use( bodyParser.json() );        // to support JSON-encoded bodies
@@ -84,6 +85,18 @@ function getOrgsAndDist(client, useCB) {
     getOrganizations(client, cb);
 }
 // ------------------ global functions till here -----------------------
+
+/**
+ * API for token-pool service to inform about a new token in system.
+ */
+app.post('/new', function (req, res) {
+    console.log('New token recieved, spawning a worker');
+    // TODO: validate the request.
+    var token = req.body.token;
+
+    // Spawn a worker, it'll deal with the rest.
+    var child = fork('../workers/index.js', [token.token, selfaddr, ++workerCount]);
+});
 
 /**
  * DATA Api for logging from workers.
@@ -250,6 +263,7 @@ app.listen('3001', function (req, res) {
                 if (!i || i >= tokens.length) return;
                 console.log('spawning a worker');
                 var token = tokens[i];
+                workerCount = i;
                 var child = fork('../workers/index.js', [token.token, selfaddr, i]);
                 setTimeout(function() {
                     spawnChild(i + 1);

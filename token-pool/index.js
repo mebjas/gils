@@ -6,7 +6,8 @@ var express = require('express');
 var bodyParser = require('body-parser');
 var sprintf = require('sprintf').sprintf;
 var request = require('request');
-var tokens = require('./tokens');
+var fs = require('fs');
+var tokens = require('./tokens.json');
 
 var app = express();
 app.use( bodyParser.json() );       // to support JSON-encoded bodies
@@ -69,6 +70,13 @@ app.post('/new', function(req, res) {
     // make it configurable by req param.
     tokens.push(token);
     // send the message downstream
+    // save to file as well.
+    fs.writeFileSync('tokens.json', JSON.stringify(tokens), function (err) {
+        if (err) {
+            console.log('[error] ERROR updating tokens', err);
+        }
+        return;
+    })
 
     // TODO: remove protocol harcoding    
     var bossAddr = sprintf("http://%s:%s/", DS.boss.ip, DS.boss.port);
