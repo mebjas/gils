@@ -7,14 +7,18 @@
     "body-parser": "^1.15.2",
     "express": "^4.14.0",
     "freeport": "^1.0.5",
+    "natural": "^0.4.0",
     "octonode": "^0.7.6",
     "portfinder": "^1.0.5",
     "request": "^2.74.0",
     "sprintf": "^0.1.5"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "concurrently": "^2.2.0"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "node token-pool/index.js | node boss/index.js"
   },
   "repository": {
     "type": "git",

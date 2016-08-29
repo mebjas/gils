@@ -28,10 +28,9 @@ files.forEach(function(_file) {
         try {
             var d = JSON.parse(line);
             if (!d.labels.length) return;
-            var entry = {issue: d.issue, labels: []};
             d.labels.forEach(function(label) {
-                entry.labels.push(label.name);
-                console.log(label.name);
+                data.push({issue: d.issue, label: label.name});                      
+                // console.log(label.name);
 
                 if (typeof labelFreq[label.name] == 'undefined')
                     labelFreq[label.name] = 1;
@@ -39,7 +38,6 @@ files.forEach(function(_file) {
             });
 
             lastUpdate = new Date().getTime();
-            data.push(entry);
         } catch (ex) {
             console.log(ex);
         }
