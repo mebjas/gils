@@ -1,4 +1,8 @@
 node_modules/
 token-pool/tokens.js
 boss/metadata.json
-dataset/data.csv
+dataset/
+classifiers/*/output*
+classifiers/data/*
+.vscode/
+filter-dataset/*.json
