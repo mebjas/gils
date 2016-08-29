@@ -1,24 +1,12 @@
 var fs = require('fs');
+var rd = require('./readData.js');
 var start = new Date().getTime();
 var data = [];
 var labelFreq = {};
 var lastUpdate = start;
+var outputFileName = 'simple-issue-label-json.json';
 
-function getFiles (dir, files_){
-    files_ = files_ || [];
-    var files = fs.readdirSync(dir);
-    for (var i in files){
-        var name = dir + '/' + files[i];
-        if (fs.statSync(name).isDirectory()){
-            // skip
-        } else {
-            files_.push(name);
-        }
-    }
-    return files_;
-}
-
-var files = getFiles('../dataset');
+var files = rd();
 files.forEach(function(_file) {
     var lineReader = require('readline').createInterface({
         input: require('fs').createReadStream(_file)
@@ -50,7 +38,7 @@ function checkForLastUpdateAndLog() {
     if (new Date().getTime() > lastUpdate + 5000) {
         // finish
         console.log(labelFreq);
-        fs.writeFileSync('filter-issue-label.json', JSON.stringify(data));
+        fs.writeFileSync(outputFileName, JSON.stringify(data));
     } else {
         console.log('current time: ', new Date().getTime());
         console.log('lastUpdate time: ', lastUpdate);
