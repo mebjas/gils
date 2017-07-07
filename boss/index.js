@@ -109,16 +109,28 @@ app.post('/data', function (req, res) {
     }
 
     var data = req.body.data;
-    var log = {issue: data.title, body: data.body,labels: []};
-    // console.log(data);
-    if (typeof data.labels != 'undefined' && data.labels.length) {
-        var labels = [];
-        data.labels.forEach(function (label) {
-            labels.push(label);
-            // TODO: verify this param
-        });
-        log.labels = labels;
-    }
+    var log = {id: data.id,
+        issue: data.title,
+        body: data.body,
+        user: data.user.login,
+        state: data.state,
+        assignees: data.assignees,
+        created_at: data.created_at,
+        updated_at: data.updated_at,
+        closed_at: data.closed_at,
+        comments: data.comments,
+        locked: data.locked,
+        milestone: data.milestone,
+        labels: data.labels};
+    // // console.log(data);
+    // if (typeof data.labels != 'undefined' && data.labels.length) {
+    //     var labels = [];
+    //     data.labels.forEach(function (label) {
+    //         labels.push(label);
+    //         // TODO: verify this param
+    //     });
+    //     log.labels = labels;
+    // }
 
     fs.appendFile(dataset, JSON.stringify(log) +"\r\n", function (err) {
         if (err) {
