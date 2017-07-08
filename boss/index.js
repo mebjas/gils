@@ -52,7 +52,7 @@ function getOrganizations(client, cb) {
             console.log("GITHUB API ERROR, ", err);
             return;
         }
-        
+
         data.forEach(function(org) {
             rq.push(org);
             console.log(sprintf("%s pushed to queue", org.login));
@@ -109,9 +109,13 @@ app.post('/data', function (req, res) {
     }
 
     var data = req.body.data;
-    var log = {id: data.id,
+    var repo = req.body.repo;
+    var log = {
+        repo_id: repo.id,
+        repo_name: repo.full_name,
+        id: data.id,
         issue: data.title,
-        body: data.body,
+        body: data.body.replace(/(?:\r\n|\r|\n)/g, " "),
         user: data.user.login,
         state: data.state,
         assignees: data.assignees,

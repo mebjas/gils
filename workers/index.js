@@ -66,30 +66,46 @@ app.post('/work', function(req, res) {
     console.log(sprintf("WORKER%s dealing with org: %s", ID, org.login));
 
     var ghorg = client.org(org.login);
-    ghorg.repos(function(err,data, headers) {
+    console.log("Worker" +ID +": [ORG] " +org.login)
+    ghorg.repos(function(err, data, headers) {
         if (err) {
             if (typeof err.message != 'undefined'
                 && err.message.indexOf('API rate limit exceeded') === 0) {
-                    // Case API Limit exceeded.
-                    // Get the reset period and set a timeout to ask for next
-                    // at that time.
-                    if (typeof err.headers == 'undefined') {
-                        console.log(sprintf("[error] [high] worker%s [APILIMIT] err.headers undefined", ID));
-                        process.exit(0);
-                    }
-
-                    var resetTime = parseInt(err.headers['x-ratelimit-reset']);
-                    console.log(sprintf("WORKER%s will hibernate till", ID));
-                    console.log(new Date(resetTime * 1000));
-
-                    // hibernate till API LIMIT reset period + 1;
-                    // Ask boss to push this org back to queue
-                    request.post(bossAddr +'pushback', {form: {org: org}});
-                    setTimeout(next, (resetTime - Math.round(new Date().getTime() / 1000))*1000 + 1000);
-                    return;
+                // Case API Limit exceeded.
+                // Get the reset period and set a timeout to ask for next
+                // at that time.
+                if (typeof err.headers == 'undefined') {
+                    console.log(sprintf("[error] [high] worker%s [APILIMIT] err.headers undefined", ID));
+                    process.exit(0);
                 }
-            
-            console.log('some other error', err);
+
+                var resetTime = parseInt(err.headers['x-ratelimit-reset']);
+                console.log(sprintf("WORKER%s will hibernate till", ID));
+                console.log(new Date(resetTime * 1000));
+
+                // hibernate till API LIMIT reset period + 1;
+                // Ask boss to push this org back to queue
+                request.post(bossAddr +'pushback', {form: {org: org}});
+                setTimeout(next, (resetTime - Math.round(new Date().getTime() / 1000))*1000 + 1000);
+                return;
+            } else if (typeof err.message != 'undefined'
+                && err.message.indexOf('an abuse detection mechanism') === 0) {
+                // case abuse detection
+                // hibernate till API LIMIT reset period + 1;
+                // Ask boss to push this org back to queue
+                console.log("Abuse detection detected, hibernate for 10min")
+                request.post(bossAddr +'pushback', {form: {org: org}});
+                setTimeout(next, 10 * 60 * 1000);
+                return;
+            } else {
+                console.log("Some other error for ORG: " +org.login)
+                console.log(err);
+                console.log("Skipping this org, hibernating for 30sec")
+                setTimeout(function() {
+                    next();
+                }, 1000 * 30);
+                return;
+            }
         }
 
         var repoCount = data.length, covered = 0;
@@ -99,41 +115,54 @@ app.post('/work', function(req, res) {
         }
 
         lastOrgId = org.id;
-
-        data.forEach(function(repo) {
-            var fullName = repo.full_name;
-            var ghrepo = client.repo(fullName);
+        // take care of pagination
+        function pullIssues($repo, $ghrepo, pageNo) {
             // TODO: add check for api call limit @priority: high
-            ghrepo.issues(function (err, _data, headers) {
+            $ghrepo.issues({page: pageNo, per_page: 100, state: 'all'},
+                function (err, _data, headers) {
                 if (err) {
                     if (typeof err.message != 'undefined'
-                        && err.message.indexOf('API rate limit exceeded') === 0) {
-                            // Case API Limit exceeded.
-                            // Get the reset period and set a timeout to ask for next
-                            // at that time.
-                            if (typeof err.headers == 'undefined') {
-                                console.log(sprintf("[error] [high] worker%s [APILIMIT] err.headers undefined", ID));
-                                process.exit(0);
-                            }
-
-                            var resetTime = parseInt(err.headers['x-ratelimit-reset']);
-                            console.log(sprintf("WORKER%s will hibernate till", ID));
-                            console.log(new Date(resetTime * 1000));
-
-                            // hibernate till API LIMIT reset period + 1;
-                            // Ask boss to push this org back to queue
-                            // this will result in loss of some information here but that's fine
-                            setTimeout(next, (resetTime - Math.round(new Date().getTime() / 1000))*1000 + 1000);
-                            return;
+                    && err.message.indexOf('API rate limit exceeded') === 0) {
+                        // Case API Limit exceeded.
+                        // Get the reset period and set a timeout to ask for next
+                        // at that time.
+                        if (typeof err.headers == 'undefined') {
+                            console.log(sprintf("[error] [high] worker%s [APILIMIT] err.headers undefined", ID));
+                            process.exit(0);
                         }
-                    
-                    console.log('some other error', err);
+
+                        var resetTime = parseInt(err.headers['x-ratelimit-reset']);
+                        console.log(sprintf("WORKER%s will hibernate till", ID));
+                        console.log(new Date(resetTime * 1000));
+
+                        // hibernate till API LIMIT reset period + 1;
+                        // Ask boss to push this org back to queue
+                        // this will result in loss of some information here but that's fine
+                        setTimeout(next, (resetTime - Math.round(new Date().getTime() / 1000))*1000 + 1000);
+                        return;
+                    } else if (typeof err.message != 'undefined'
+                        && err.message.indexOf('an abuse detection mechanism') === 0) {
+                        // case abuse detection
+                        // hibernate till API LIMIT reset period + 1;
+                        // Ask boss to push this org back to queue
+                        console.log("Abuse detection detected, hibernate for 10min")
+                        setTimeout(next, 10 * 60 * 1000);
+                        return;
+                    } else {
+                        console.log("Some other error for ORG/REPO: " +$repo.full_name)
+                        console.log(err);
+                        console.log("Skipping this org, hibernating for 30sec")
+                        setTimeout(function() {
+                            next();
+                        }, 1000 * 30);
+                        return;
+                    }
                 } else if (_data.length) {
                     _data.forEach(function (issue) {
                         try {
-                            request.post(bossAddr +'data', {form: {data: issue}});
+                            request.post(bossAddr +'data', {form: {data: issue, repo: $repo}});
                         } catch (ex) {
-                            var log = {repo: fullName, login: repo.id, error :ex};
+                            var log = {repo: $repo.full_name, login: $repo.id, error :ex};
                             fs.appendFile(logfile, JSON.stringify(log) +"\r\n", function (err) {
                                 if (err) {
                                     console.log('[error] ERROR While logging :D, now what', err);
@@ -141,12 +170,31 @@ app.post('/work', function(req, res) {
                             });
                         }
                     });
-                }   
-
-                if (++covered == repoCount) {
-                    next();
-                }
+                    console.log("Worker" +ID +": pulling page " + (pageNo + 1) +" for " +$repo.full_name)
+                    pullIssues($repo, $ghrepo, pageNo + 1);
+                } else {
+                    console.log("Worker" +ID +" Done with " +$repo.full_name)
+                    // no entry in the array
+                    if (++covered == repoCount) {
+                        console.log("Worker" +ID +", finished a repo."
+                            + " " +covered +" / " +repoCount)                                                    
+                        
+                        console.log("Worker" +ID +" Moving on to next")                        
+                        next();
+                    } else {
+                        console.log("Worker" +ID +", finished a repo. Waiting for rest"
+                            + " " +covered +" / " +repoCount)                                                    
+                    }
+                }                    
             });
+
+            }
+
+        data.forEach(function(repo) {
+            var fullName = repo.full_name;
+            var ghrepo = client.repo(fullName);
+            console.log("Worker" +ID +": [repo] [init pull issues] " +fullName)
+            pullIssues(repo, ghrepo, 1)
         }, this);
     })
 });
